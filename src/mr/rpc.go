@@ -24,8 +24,15 @@ type ExampleReply struct {
 	Y int
 }
 
+type getReduceArgs struct {
+}
+
+type getReduceReply struct {
+	nReduce int
+}
+
 type GetTaskArgs struct {
-	id int
+	Workerid int
 }
 
 type GetTaskReply struct {
