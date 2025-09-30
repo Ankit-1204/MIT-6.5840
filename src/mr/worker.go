@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -51,7 +52,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				fmt.Println(err)
 			}
 			kva := Map(getReply.file, string(data))
-			err = writeMap(&kva, nReduce)
+			err = writeMap(&kva, nReduce, getReply.id)
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -60,9 +61,9 @@ func Worker(mapf func(string, string) []KeyValue,
 
 }
 
-func writeMap(kva *[]KeyValue, nReduce int) error {
+func writeMap(kva *[]KeyValue, nReduce int, tid int) error {
 	if kva == nil {
-		return errors.New("No kva data")
+		return errors.New("no kva data")
 	}
 	pid := os.Getpid()
 	dirname := "temp"
@@ -70,33 +71,42 @@ func writeMap(kva *[]KeyValue, nReduce int) error {
 	if err != nil {
 		return err
 	}
+	files := make([]*os.File, 0, nReduce)
+	encoders := make([]*json.Encoder, 0, nReduce)
 	for i := 0; i < nReduce; i++ {
-		filename := fmt.Sprintf("mr-%d-%d", pid, i)
+		filename := fmt.Sprintf("mr-%d-%d-%d", tid, i, pid)
 		filepath := filepath.Join(dirname, filename)
 		file, err := os.Create(filepath)
 		if err != nil {
 			fmt.Println("Error creating file:", err)
 			continue
 		}
-		file.Close()
+		files = append(files, file)
+		newEnc := json.NewEncoder(file)
+		encoders = append(encoders, newEnc)
 	}
 
 	for _, d := range *kva {
 		id := ihash(d.Key) % nReduce
-		filename := fmt.Sprintf("mr-%d-%d", pid, id)
-		filepath := filepath.Join(dirname, filename)
-		file, err := os.OpenFile(filepath, os.O_APPEND|os.O_WRONLY, 0644)
+		err := encoders[id].Encode(&d)
 		if err != nil {
-			fmt.Println("Error creating file:", err)
-			continue
+			return err
 		}
-		defer file.Close()
-		_, err = file.WriteString(d.Value)
-		if err != nil {
-			fmt.Println("Error writing:", err)
+
+	}
+	for i, f := range files {
+		tmpName := fmt.Sprintf("mr-%d-%d-%d", tid, i, pid)
+		finalName := fmt.Sprintf("mr-%d-%d", tid, i)
+
+		tmpPath := filepath.Join(dirname, tmpName)
+		finalPath := filepath.Join(dirname, finalName)
+
+		f.Close()
+
+		if err := os.Rename(tmpPath, finalPath); err != nil {
+			return fmt.Errorf("error renaming %s -> %s: %w", tmpPath, finalPath, err)
 		}
 	}
-
 	return nil
 }
 
