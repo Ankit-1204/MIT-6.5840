@@ -36,6 +36,7 @@ type GetTaskArgs struct {
 }
 
 type GetTaskReply struct {
+	id       int
 	file     string
 	taskType string
 }

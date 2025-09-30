@@ -21,6 +21,7 @@ type Coordinator struct {
 	Redtasks []*Task
 }
 type Task struct {
+	index    int
 	taskType string
 	status   string
 	file     string
@@ -41,7 +42,7 @@ func (c *Coordinator) GetReduce(rpcname string, args *getReduceArgs, reply *getR
 	reply.nReduce = globalReduce
 }
 
-func (c *Coordinator) GetTask(rpcname string, args *GetTaskArgs, reply *GetTaskReply) {
+func (c *Coordinator) GetTask(rpcname string, args *GetTaskArgs, reply *GetTaskReply) error {
 	c.mu.Lock()
 	var task *Task
 	if c.nMap > 0 {
@@ -50,26 +51,27 @@ func (c *Coordinator) GetTask(rpcname string, args *GetTaskArgs, reply *GetTaskR
 		task = c.selectTask(c.Redtasks, args.Workerid)
 	} else {
 
-		task = &Task{"EXIT", "", "", -1}
+		task = &Task{-1, "EXIT", "", "", -1}
 	}
 	reply.file = task.file
 	reply.taskType = task.taskType
+	reply.id = task.index
 	c.mu.Unlock()
 	go c.checkTask(task)
-
+	return nil
 }
 
 func (c *Coordinator) selectTask(queue []*Task, workerId int) *Task {
 	var task *Task
 	for _, t := range queue {
 		if t.status == "ns" {
-			task = t
 			t.status = "run"
 			t.workerId = workerId
+			task = t
 			return task
 		}
 	}
-	return &Task{"NOT", "", "", -1}
+	return &Task{-1, "NOT", "", "", -1}
 }
 
 func (c *Coordinator) checkTask(t *Task) {
@@ -120,11 +122,11 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c.nMap = n
 	globalReduce = nReduce
 	for i := 0; i < n; i++ {
-		task := Task{"MAP", "ns", files[i], -1}
+		task := Task{i, "MAP", "ns", files[i], -1}
 		c.Maptasks = append(c.Maptasks, &task)
 	}
 	for i := 0; i < nReduce; i++ {
-		task := Task{"RED", "ns", "", -1}
+		task := Task{i, "RED", "ns", "", -1}
 		c.Redtasks = append(c.Redtasks, &task)
 	}
 
