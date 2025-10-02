@@ -32,9 +32,9 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
-	redReply := getReduceReply{}
+	redReply := GetReduceReply{}
 	GetReduce(&redReply)
-	nReduce := redReply.nReduce
+	nReduce := redReply.NReduce
 	var succ bool
 	// Your worker implementation here.
 
@@ -47,30 +47,30 @@ func Worker(mapf func(string, string) []KeyValue,
 		if err != nil {
 			fmt.Println(err)
 		}
-		if getReply.taskType == "EXIT" {
+		if getReply.TaskType == "EXIT" {
 			fmt.Println("All task complete")
 			return
-		} else if getReply.taskType == "MAP" {
-			data, err := os.ReadFile(getReply.file)
+		} else if getReply.TaskType == "MAP" {
+			data, err := os.ReadFile(getReply.File)
 			if err != nil {
 				fmt.Println(err)
 			}
-			kva := mapf(getReply.file, string(data))
-			err = writeMap(&kva, nReduce, getReply.id)
+			kva := mapf(getReply.File, string(data))
+			err = writeMap(&kva, nReduce, getReply.Id)
 			if err != nil {
 				fmt.Println(err)
 			}
-			succ, err = reportDone("MAP", getReply.id)
-		} else if getReply.taskType == "RED" {
-			kva, err := doReduce(nReduce, getReply.id)
+			succ, err = reportDone("MAP", getReply.Id)
+		} else if getReply.TaskType == "RED" {
+			kva, err := doReduce(nReduce, getReply.Id)
 			if err != nil {
 				fmt.Println(err)
 			}
-			err = writeReduce(reducef, kva, getReply.id)
+			err = writeReduce(reducef, kva, getReply.Id)
 			if err != nil {
 				fmt.Println(err)
 			}
-			succ, err = reportDone("RED", getReply.id)
+			succ, err = reportDone("RED", getReply.Id)
 		}
 		if succ && err == nil {
 			fmt.Println("tasks done")
@@ -88,9 +88,9 @@ func reportDone(taskType string, taskId int) (bool, error) {
 	ok := call("Coordinator.ReportDone", reportArg, reportReply)
 	if ok {
 		// reply.Y should be 100.
-		return reportReply.succ, nil
+		return reportReply.Succ, nil
 	} else {
-		err := errors.New("get task error")
+		err := errors.New("get task error1")
 		return false, err
 	}
 }
@@ -202,8 +202,8 @@ func writeReduce(reducef func(string, []string) string, kva []KeyValue, rid int)
 	file.Close()
 	return nil
 }
-func GetReduce(redReply *getReduceReply) error {
-	redArg := getReduceArgs{}
+func GetReduce(redReply *GetReduceReply) error {
+	redArg := GetReduceArgs{}
 	ok := call("Coordinator.GetReduce", redArg, redReply)
 	if ok {
 		// reply.Y should be 100.
@@ -221,7 +221,7 @@ func GetTask(getArg *GetTaskArgs, getReply *GetTaskReply) error {
 		// reply.Y should be 100.
 		return nil
 	} else {
-		err := errors.New("get task error")
+		err := errors.New("get task error2")
 		return err
 	}
 }

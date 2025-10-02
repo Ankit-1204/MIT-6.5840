@@ -24,11 +24,11 @@ type ExampleReply struct {
 	Y int
 }
 
-type getReduceArgs struct {
+type GetReduceArgs struct {
 }
 
-type getReduceReply struct {
-	nReduce int
+type GetReduceReply struct {
+	NReduce int
 }
 
 type GetTaskArgs struct {
@@ -36,19 +36,19 @@ type GetTaskArgs struct {
 }
 
 type GetTaskReply struct {
-	id       int
-	file     string
-	taskType string
+	Id       int
+	File     string
+	TaskType string
 }
 
 type ReportDoneArgs struct {
 	Workerid int
-	taskType string
-	id       int
+	TaskType string
+	Id       int
 }
 
 type ReportDoneReply struct {
-	succ bool
+	Succ bool
 }
 
 // Add your RPC definitions here.

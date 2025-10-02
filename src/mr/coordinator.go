@@ -38,11 +38,12 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
-func (c *Coordinator) GetReduce(rpcname string, args *getReduceArgs, reply *getReduceReply) {
-	reply.nReduce = globalReduce
+func (c *Coordinator) GetReduce(args *GetReduceArgs, reply *GetReduceReply) error {
+	reply.NReduce = globalReduce
+	return nil
 }
 
-func (c *Coordinator) GetTask(rpcname string, args *GetTaskArgs, reply *GetTaskReply) error {
+func (c *Coordinator) GetTask(args *GetTaskArgs, reply *GetTaskReply) error {
 	c.mu.Lock()
 	var task *Task
 	if c.nMap > 0 {
@@ -53,22 +54,22 @@ func (c *Coordinator) GetTask(rpcname string, args *GetTaskArgs, reply *GetTaskR
 
 		task = &Task{-1, "EXIT", "", "", -1}
 	}
-	reply.file = task.file
-	reply.taskType = task.taskType
-	reply.id = task.index
+	reply.File = task.file
+	reply.TaskType = task.taskType
+	reply.Id = task.index
 	c.mu.Unlock()
 	go c.checkTask(task)
 	return nil
 }
 
-func (c *Coordinator) ReportDone(rpcname string, arg *ReportDoneArgs, reply *ReportDoneReply) error {
+func (c *Coordinator) ReportDone(arg *ReportDoneArgs, reply *ReportDoneReply) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var t *Task
-	if arg.taskType == "MAP" {
-		t = c.Maptasks[arg.id]
-	} else if arg.taskType == "RED" {
-		t = c.Redtasks[arg.id]
+	if arg.TaskType == "MAP" {
+		t = c.Maptasks[arg.Id]
+	} else if arg.TaskType == "RED" {
+		t = c.Redtasks[arg.Id]
 	} else {
 		t = &Task{-1, "EXIT", "", "", -1}
 	}
@@ -80,7 +81,7 @@ func (c *Coordinator) ReportDone(rpcname string, arg *ReportDoneArgs, reply *Rep
 			c.nReduce--
 		}
 	}
-	reply.succ = c.nMap == 0 && c.nReduce == 0
+	reply.Succ = c.nMap == 0 && c.nReduce == 0
 
 	return nil
 }
@@ -102,7 +103,7 @@ func (c *Coordinator) checkTask(t *Task) {
 	if t.taskType != "MAP" && t.taskType != "RED" {
 		return
 	}
-	time.Sleep(15 * time.Second)
+	time.Sleep(30 * time.Second)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -132,7 +133,7 @@ func (c *Coordinator) server() {
 func (c *Coordinator) Done() bool {
 	ret := false
 
-	// Your code here.
+	ret = c.nMap == 0 && c.nReduce == 0
 
 	return ret
 }
