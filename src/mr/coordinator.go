@@ -61,6 +61,30 @@ func (c *Coordinator) GetTask(rpcname string, args *GetTaskArgs, reply *GetTaskR
 	return nil
 }
 
+func (c *Coordinator) ReportDone(rpcname string, arg *ReportDoneArgs, reply *ReportDoneReply) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var t *Task
+	if arg.taskType == "MAP" {
+		t = c.Maptasks[arg.id]
+	} else if arg.taskType == "RED" {
+		t = c.Redtasks[arg.id]
+	} else {
+		t = &Task{-1, "EXIT", "", "", -1}
+	}
+	if t.workerId == arg.Workerid && t.status == "run" {
+		t.status = "done"
+		if t.taskType == "MAP" && c.nMap > 0 {
+			c.nMap--
+		} else if t.taskType == "RED" && c.nReduce > 0 {
+			c.nReduce--
+		}
+	}
+	reply.succ = c.nMap == 0 && c.nReduce == 0
+
+	return nil
+}
+
 func (c *Coordinator) selectTask(queue []*Task, workerId int) *Task {
 	var task *Task
 	for _, t := range queue {

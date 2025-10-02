@@ -41,6 +41,16 @@ type GetTaskReply struct {
 	taskType string
 }
 
+type ReportDoneArgs struct {
+	Workerid int
+	taskType string
+	id       int
+}
+
+type ReportDoneReply struct {
+	succ bool
+}
+
 // Add your RPC definitions here.
 
 // Cook up a unique-ish UNIX-domain socket name
