@@ -73,7 +73,7 @@ func (c *Coordinator) ReportDone(arg *ReportDoneArgs, reply *ReportDoneReply) er
 	} else {
 		t = &Task{-1, "EXIT", "", "", -1}
 	}
-	if t.workerId == arg.Workerid && t.status == "run" {
+	if t.status == "run" || t.status == "ns" {
 		t.status = "done"
 		if t.taskType == "MAP" && c.nMap > 0 {
 			c.nMap--

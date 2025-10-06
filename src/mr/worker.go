@@ -76,7 +76,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			fmt.Println("tasks done")
 			return
 		}
-		time.Sleep(15 * time.Second)
+		time.Sleep(5 * time.Second)
 	}
 
 }
