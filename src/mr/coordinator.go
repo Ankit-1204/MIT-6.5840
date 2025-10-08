@@ -73,7 +73,7 @@ func (c *Coordinator) ReportDone(arg *ReportDoneArgs, reply *ReportDoneReply) er
 	} else {
 		t = &Task{-1, "EXIT", "", "", -1}
 	}
-	if t.status == "run" || t.status == "ns" {
+	if t.workerId == arg.Workerid && t.status == "run" {
 		t.status = "done"
 		if t.taskType == "MAP" && c.nMap > 0 {
 			c.nMap--
@@ -103,7 +103,8 @@ func (c *Coordinator) checkTask(t *Task) {
 	if t.taskType != "MAP" && t.taskType != "RED" {
 		return
 	}
-	time.Sleep(30 * time.Second)
+	<-time.After(time.Second * 10)
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
