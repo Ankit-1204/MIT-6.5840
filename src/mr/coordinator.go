@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -77,6 +78,9 @@ func (c *Coordinator) ReportDone(arg *ReportDoneArgs, reply *ReportDoneReply) er
 		t.status = "done"
 		if t.taskType == "MAP" && c.nMap > 0 {
 			c.nMap--
+			if c.nMap == 0 {
+				fmt.Println("All map tasks done. Starting reduce phase.")
+			}
 		} else if t.taskType == "RED" && c.nReduce > 0 {
 			c.nReduce--
 		}
@@ -103,7 +107,7 @@ func (c *Coordinator) checkTask(t *Task) {
 	if t.taskType != "MAP" && t.taskType != "RED" {
 		return
 	}
-	<-time.After(time.Second * 10)
+	<-time.After(time.Second * 50)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
