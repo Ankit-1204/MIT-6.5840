@@ -18,8 +18,8 @@ type Coordinator struct {
 	files    []string
 	nReduce  int
 	nMap     int
-	Maptasks []*Task
-	Redtasks []*Task
+	Maptasks []Task
+	Redtasks []Task
 }
 type Task struct {
 	index    int
@@ -48,11 +48,13 @@ func (c *Coordinator) GetTask(args *GetTaskArgs, reply *GetTaskReply) error {
 	c.mu.Lock()
 	var task *Task
 	if c.nMap > 0 {
+		fmt.Println("map1")
 		task = c.selectTask(c.Maptasks, args.Workerid)
 	} else if c.nReduce > 0 {
+		fmt.Println("reduce")
 		task = c.selectTask(c.Redtasks, args.Workerid)
 	} else {
-
+		fmt.Println("exit")
 		task = &Task{-1, "EXIT", "", "", -1}
 	}
 	reply.File = task.file
@@ -68,15 +70,18 @@ func (c *Coordinator) ReportDone(arg *ReportDoneArgs, reply *ReportDoneReply) er
 	defer c.mu.Unlock()
 	var t *Task
 	if arg.TaskType == "MAP" {
-		t = c.Maptasks[arg.Id]
+		fmt.Println("map")
+		t = &c.Maptasks[arg.Id]
 	} else if arg.TaskType == "RED" {
-		t = c.Redtasks[arg.Id]
+		t = &c.Redtasks[arg.Id]
 	} else {
-		t = &Task{-1, "EXIT", "", "", -1}
+		t = nil
 	}
-	if t.workerId == arg.Workerid && t.status == "run" {
+	if t != nil && t.status == "run" {
 		t.status = "done"
+		fmt.Println(c.nMap)
 		if t.taskType == "MAP" && c.nMap > 0 {
+			fmt.Println(c.nMap)
 			c.nMap--
 			if c.nMap == 0 {
 				fmt.Println("All map tasks done. Starting reduce phase.")
@@ -90,13 +95,14 @@ func (c *Coordinator) ReportDone(arg *ReportDoneArgs, reply *ReportDoneReply) er
 	return nil
 }
 
-func (c *Coordinator) selectTask(queue []*Task, workerId int) *Task {
+func (c *Coordinator) selectTask(queue []Task, workerId int) *Task {
 	var task *Task
-	for _, t := range queue {
-		if t.status == "ns" {
-			t.status = "run"
-			t.workerId = workerId
-			task = t
+	for i := 0; i < len(queue); i++ {
+		if queue[i].status == "ns" {
+			task = &queue[i]
+			task.status = "run"
+			task.workerId = workerId
+
 			return task
 		}
 	}
@@ -107,7 +113,7 @@ func (c *Coordinator) checkTask(t *Task) {
 	if t.taskType != "MAP" && t.taskType != "RED" {
 		return
 	}
-	<-time.After(time.Second * 50)
+	time.Sleep(30 * time.Second)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -137,7 +143,9 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
 	ret := false
-
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	fmt.Println(c.nMap, c.nReduce)
 	ret = c.nMap == 0 && c.nReduce == 0
 
 	return ret
@@ -150,14 +158,16 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{files: files, nReduce: nReduce}
 	n := len(files)
 	c.nMap = n
+	c.Maptasks = make([]Task, 0, n)
+	c.Redtasks = make([]Task, 0, nReduce)
 	globalReduce = nReduce
 	for i := 0; i < n; i++ {
 		task := Task{i, "MAP", "ns", files[i], -1}
-		c.Maptasks = append(c.Maptasks, &task)
+		c.Maptasks = append(c.Maptasks, task)
 	}
 	for i := 0; i < nReduce; i++ {
 		task := Task{i, "RED", "ns", "", -1}
-		c.Redtasks = append(c.Redtasks, &task)
+		c.Redtasks = append(c.Redtasks, task)
 	}
 
 	// Your code here.

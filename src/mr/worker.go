@@ -46,6 +46,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		err := GetTask(&getArg, &getReply)
 		if err != nil {
 			fmt.Println(err)
+			continue
 		}
 		if getReply.TaskType == "EXIT" {
 			fmt.Println("All task complete")
@@ -54,27 +55,35 @@ func Worker(mapf func(string, string) []KeyValue,
 			data, err := os.ReadFile(getReply.File)
 			if err != nil {
 				fmt.Println(err)
+				continue
 			}
 			kva := mapf(getReply.File, string(data))
 			err = writeMap(&kva, nReduce, getReply.Id)
 			if err != nil {
 				fmt.Println(err)
+				continue
 			}
 			succ, err = reportDone("MAP", getReply.Id)
 		} else if getReply.TaskType == "RED" {
 			kva, err := doReduce(nReduce, getReply.Id)
 			if err != nil {
 				fmt.Println(err)
+				continue
 			}
 			err = writeReduce(reducef, kva, getReply.Id)
 			if err != nil {
 				fmt.Println(err)
+				continue
 			}
 			succ, err = reportDone("RED", getReply.Id)
+		} else {
+			time.Sleep(5 * time.Second)
+			continue
 		}
-		if succ && err == nil {
+		if succ {
 			fmt.Println("tasks done")
 			return
+
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -85,7 +94,7 @@ func reportDone(taskType string, taskId int) (bool, error) {
 	reportArg := ReportDoneArgs{os.Getpid(), taskType, taskId}
 	reportReply := ReportDoneReply{}
 
-	ok := call("Coordinator.ReportDone", reportArg, reportReply)
+	ok := call("Coordinator.ReportDone", &reportArg, &reportReply)
 	if ok {
 		// reply.Y should be 100.
 		return reportReply.Succ, nil
@@ -112,7 +121,7 @@ func writeMap(kva *[]KeyValue, nReduce int, tid int) error {
 		file, err := os.Create(filepath)
 		if err != nil {
 			fmt.Println("Error creating file:", err)
-			continue
+			return err
 		}
 		files = append(files, file)
 		newEnc := json.NewEncoder(file)
@@ -127,14 +136,18 @@ func writeMap(kva *[]KeyValue, nReduce int, tid int) error {
 		}
 
 	}
-	for i, f := range files {
+	for _, f := range files {
+		if f != nil {
+			f.Close()
+		}
+
+	}
+	for i := 0; i < nReduce; i++ {
 		tmpName := fmt.Sprintf("mr-%d-%d-%d", tid, i, pid)
 		finalName := fmt.Sprintf("mr-%d-%d", tid, i)
 
 		tmpPath := filepath.Join(dirname, tmpName)
 		finalPath := filepath.Join(dirname, finalName)
-
-		f.Close()
 
 		if err := os.Rename(tmpPath, finalPath); err != nil {
 			return fmt.Errorf("error renaming %s -> %s: %w", tmpPath, finalPath, err)
@@ -182,6 +195,7 @@ func writeReduce(reducef func(string, []string) string, kva []KeyValue, rid int)
 	file, err := os.Create(filename)
 	if err != nil {
 		fmt.Println(err)
+		return err
 	}
 	i := 0
 	for i < len(kva) {
@@ -204,7 +218,7 @@ func writeReduce(reducef func(string, []string) string, kva []KeyValue, rid int)
 }
 func GetReduce(redReply *GetReduceReply) error {
 	redArg := GetReduceArgs{}
-	ok := call("Coordinator.GetReduce", redArg, redReply)
+	ok := call("Coordinator.GetReduce", &redArg, redReply)
 	if ok {
 		// reply.Y should be 100.
 		return nil
