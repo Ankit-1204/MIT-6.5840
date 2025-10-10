@@ -63,6 +63,7 @@ func (kv *KVServer) Put(args *rpc.PutArgs, reply *rpc.PutReply) {
 			initialVal.value = args.Value
 			initialVal.version++
 			kv.mp[args.Key] = initialVal
+			reply.Err = rpc.OK
 		} else {
 			reply.Err = rpc.ErrVersion
 		}
@@ -70,6 +71,7 @@ func (kv *KVServer) Put(args *rpc.PutArgs, reply *rpc.PutReply) {
 		if args.Version == 0 {
 			Val := ValueVersion{args.Value, 1}
 			kv.mp[args.Key] = Val
+			reply.Err = rpc.OK
 		} else {
 			reply.Err = rpc.ErrNoKey
 		}
@@ -84,5 +86,6 @@ func (kv *KVServer) Kill() {
 // You can ignore all arguments; they are for replicated KVservers
 func StartKVServer(ends []*labrpc.ClientEnd, gid tester.Tgid, srv int, persister *tester.Persister) []tester.IService {
 	kv := MakeKVServer()
+	kv.mp = make(map[string]ValueVersion)
 	return []tester.IService{kv}
 }

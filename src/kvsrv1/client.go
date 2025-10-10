@@ -33,7 +33,7 @@ func (ck *Clerk) Get(key string) (string, rpc.Tversion, rpc.Err) {
 
 	for {
 		ok := ck.clnt.Call(ck.server, "KVServer.Get", &args, &reply)
-		if ok && reply.Err == rpc.ErrNoKey {
+		if ok && (reply.Err == rpc.ErrNoKey || reply.Err == rpc.OK) {
 			return reply.Value, reply.Version, reply.Err
 		}
 	}
