@@ -32,6 +32,7 @@ type Raft struct {
 	votedFor    int
 	log         []any
 	state       string
+	votes       int
 
 	applyChannel chan raftapi.ApplyMsg
 	hbeat        chan bool
@@ -176,6 +177,15 @@ func (rf *Raft) broadcastAppendEntry() {
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (3A, 3B).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if args.Term < rf.currentTerm {
+		reply.Term = rf.currentTerm
+		reply.VoteGranted = false
+	} else if rf.votedFor == -1 || rf.votedFor == args.CandidateId {
+		reply.Term = rf.currentTerm
+		reply.VoteGranted = true
+	}
 
 }
 
@@ -206,6 +216,31 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // capitalized all field names in structs passed over RPC, and
 // that the caller passes the address of the reply struct with &, not
 // the struct itself.
+func (rf *Raft) handleVoting(server int) {
+	args := RequestVoteArgs{CandidateId: rf.me, Term: rf.currentTerm}
+	reply := RequestVoteReply{}
+	ok := rf.sendRequestVote(server, &args, &reply)
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if rf.state == "leader" || rf.state == "follower" {
+		fmt.Println("Already leader")
+		return
+	}
+	if reply.Term > rf.currentTerm {
+		rf.stepDown <- true
+	}
+	if ok && reply.VoteGranted {
+		rf.votes++
+	} else if ok && !reply.VoteGranted {
+		rf.currentTerm = reply.Term
+	}
+	l := len(rf.peers)
+	if rf.votes >= (l/2)+1 {
+		rf.winElec <- true
+	}
+
+}
+
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
@@ -255,12 +290,13 @@ func (rf *Raft) killed() bool {
 func (rf *Raft) startElection() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	rf.votes = 0
 	rf.currentTerm++
 	rf.votedFor = rf.me
-
+	rf.votes++
 	for i := range rf.peers {
 		if i != rf.me {
-
+			go rf.handleVoting(i)
 		}
 	}
 }
@@ -285,10 +321,26 @@ func (rf *Raft) ticker() {
 			select {
 			case <-rf.hbeat:
 			case <-rf.winElec:
+				rf.mu.Lock()
+				rf.votedFor = -1
+				rf.votes = 0
+				rf.state = "leader"
+				rf.mu.Unlock()
+			case <-rf.stepDown:
+				rf.mu.Lock()
+				rf.votedFor = -1
+				rf.votes = 0
+				rf.state = "follower"
+				rf.mu.Unlock()
 			}
 		case "leader":
 			select {
 			case <-rf.stepDown:
+				rf.mu.Lock()
+				rf.votedFor = -1
+				rf.votes = 0
+				rf.state = "follower"
+				rf.mu.Unlock()
 			case <-time.After(time.Duration(150) * time.Millisecond):
 
 			}
@@ -296,24 +348,6 @@ func (rf *Raft) ticker() {
 		}
 	}
 }
-
-// func (rf *Raft) heartbeat() {
-// 	for rf.killed() == false {
-// 		ms := 200 + (rand.Int63() % 500)
-// 		time.Sleep(time.Duration(ms) * time.Millisecond)
-// 		if rf.state == rf.me {
-
-// 			for i, _ := range rf.peers {
-// 				if i != rf.me {
-// 					args := AppendEntriesArgs{Term: rf.currentTerm, leaderId: rf.currentTerm}
-// 					reply := AppendEntriesReply{}
-// 					ok := rf.peers[i].Call("Raft.AppendEntries", args, reply)
-// 					fmt.Println(ok)
-// 				}
-// 			}
-// 		}
-// 	}
-// }
 
 // the service or tester wants to create a Raft server. the ports
 // of all the Raft servers (including this one) are in peers[]. this
