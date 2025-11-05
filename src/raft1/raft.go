@@ -132,7 +132,7 @@ type RequestVoteReply struct {
 
 type AppendEntriesArgs struct {
 	Term     int
-	leaderId int
+	LeaderId int
 	// PrevLogIndex int
 	// PreLogTerm   int
 	// Entries      []any
@@ -146,15 +146,29 @@ type AppendEntriesReply struct {
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	rf.hbeat <- true
-
 	if rf.currentTerm > args.Term {
 		reply.Term = rf.currentTerm
 		reply.Success = false
 	} else {
+		rf.currentTerm = args.Term
+		if rf.currentTerm < args.Term {
+			rf.votedFor = -1
+			rf.votes = 0
+			rf.state = "follower"
+			rf.mu.Unlock()
+			select {
+			case rf.stepDown <- true:
+			default:
+			}
+			rf.mu.Lock()
+		}
 		reply.Term = args.Term
 		reply.Success = true
+	}
+	rf.mu.Unlock()
+	select {
+	case rf.hbeat <- true:
+	default:
 	}
 	// for 3A only implemented till heartbeat
 }
@@ -166,8 +180,8 @@ func (rf *Raft) sendAppendEntry(server int, args *AppendEntriesArgs, reply *Appe
 func (rf *Raft) broadcastAppendEntry() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	for i, _ := range rf.peers {
-		args := AppendEntriesArgs{Term: rf.currentTerm, leaderId: rf.me}
+	for i := range rf.peers {
+		args := AppendEntriesArgs{Term: rf.currentTerm, LeaderId: rf.me}
 		reply := AppendEntriesReply{}
 
 		go rf.sendAppendEntry(i, &args, &reply)
@@ -178,13 +192,29 @@ func (rf *Raft) broadcastAppendEntry() {
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (3A, 3B).
 	rf.mu.Lock()
-	defer rf.mu.Unlock()
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
-	} else if rf.votedFor == -1 || rf.votedFor == args.CandidateId {
-		reply.Term = rf.currentTerm
+	}
+	if args.Term > rf.currentTerm {
+		rf.currentTerm = args.Term
+		rf.votedFor = -1
+		rf.votes = 0
+		rf.state = "follower"
+		rf.mu.Unlock()
+		select {
+		case rf.stepDown <- true:
+		default:
+		}
+		return
+	}
+	defer rf.mu.Unlock()
+	reply.Term = rf.currentTerm
+	if rf.votedFor == -1 || rf.votedFor == args.CandidateId {
+		rf.votedFor = args.CandidateId
 		reply.VoteGranted = true
+	} else {
+		reply.VoteGranted = false
 	}
 
 }
@@ -217,17 +247,29 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // that the caller passes the address of the reply struct with &, not
 // the struct itself.
 func (rf *Raft) handleVoting(server int) {
+	rf.mu.Lock()
 	args := RequestVoteArgs{CandidateId: rf.me, Term: rf.currentTerm}
 	reply := RequestVoteReply{}
-	ok := rf.sendRequestVote(server, &args, &reply)
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	if rf.state == "leader" || rf.state == "follower" {
-		fmt.Println("Already leader")
+	if rf.state != "candidate" {
+		fmt.Println("not a candidate")
+		rf.mu.Unlock()
 		return
 	}
-	if reply.Term > rf.currentTerm {
-		rf.stepDown <- true
+	rf.mu.Unlock()
+	ok := rf.sendRequestVote(server, &args, &reply)
+	rf.mu.Lock()
+
+	if ok && reply.Term > rf.currentTerm {
+		rf.currentTerm = reply.Term
+		rf.votedFor = -1
+		rf.votes = 0
+		rf.state = "follower"
+		rf.mu.Unlock()
+		select {
+		case rf.stepDown <- true:
+		default:
+		}
+		return
 	}
 	if ok && reply.VoteGranted {
 		rf.votes++
@@ -236,8 +278,14 @@ func (rf *Raft) handleVoting(server int) {
 	}
 	l := len(rf.peers)
 	if rf.votes >= (l/2)+1 {
-		rf.winElec <- true
+		rf.mu.Unlock()
+		select {
+		case rf.winElec <- true:
+		default:
+		}
+		return
 	}
+	rf.mu.Unlock()
 
 }
 
@@ -291,6 +339,7 @@ func (rf *Raft) startElection() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	rf.votes = 0
+	rf.state = "candidate"
 	rf.currentTerm++
 	rf.votedFor = rf.me
 	rf.votes++
@@ -302,7 +351,7 @@ func (rf *Raft) startElection() {
 }
 
 func (rf *Raft) ticker() {
-	for rf.killed() == false {
+	for !rf.killed() {
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
 		// ms := 50 + (rand.Int63() % 300)
@@ -314,35 +363,27 @@ func (rf *Raft) ticker() {
 		case "follower":
 			select {
 			case <-rf.hbeat:
-			case <-time.After(time.Duration(50+(rand.Int63()%500)) * time.Millisecond):
+			case <-time.After(time.Duration(50+(rand.Int63()%350)) * time.Millisecond):
 				rf.startElection()
 			}
 		case "candidate":
 			select {
-			case <-rf.hbeat:
 			case <-rf.winElec:
 				rf.mu.Lock()
 				rf.votedFor = -1
 				rf.votes = 0
 				rf.state = "leader"
 				rf.mu.Unlock()
+				rf.broadcastAppendEntry()
 			case <-rf.stepDown:
-				rf.mu.Lock()
-				rf.votedFor = -1
-				rf.votes = 0
-				rf.state = "follower"
-				rf.mu.Unlock()
+			case <-time.After(time.Duration(50+(rand.Int63()%350)) * time.Millisecond):
+				rf.startElection()
 			}
 		case "leader":
 			select {
 			case <-rf.stepDown:
-				rf.mu.Lock()
-				rf.votedFor = -1
-				rf.votes = 0
-				rf.state = "follower"
-				rf.mu.Unlock()
 			case <-time.After(time.Duration(150) * time.Millisecond):
-
+				rf.broadcastAppendEntry()
 			}
 
 		}
@@ -365,8 +406,12 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.votedFor = -1
+	rf.currentTerm = 0
 	rf.state = "follower"
 	rf.applyChannel = applyCh
+	rf.hbeat = make(chan bool, 1)
+	rf.winElec = make(chan bool, 1)
+	rf.stepDown = make(chan bool, 1)
 	// Your initialization code here (3A, 3B, 3C).
 
 	// initialize from state persisted before a crash
