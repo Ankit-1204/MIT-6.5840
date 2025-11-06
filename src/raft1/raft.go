@@ -150,8 +150,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Term = rf.currentTerm
 		reply.Success = false
 	} else {
-		rf.currentTerm = args.Term
 		if rf.currentTerm < args.Term {
+			rf.currentTerm = args.Term
 			rf.votedFor = -1
 			rf.votes = 0
 			rf.state = "follower"
@@ -162,6 +162,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			}
 			rf.mu.Lock()
 		}
+		rf.currentTerm = args.Term
 		reply.Term = args.Term
 		reply.Success = true
 	}
@@ -195,6 +196,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
+		rf.mu.Unlock()
+		return
 	}
 	if args.Term > rf.currentTerm {
 		rf.currentTerm = args.Term
@@ -206,7 +209,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		case rf.stepDown <- true:
 		default:
 		}
-		return
+		rf.mu.Lock()
 	}
 	defer rf.mu.Unlock()
 	reply.Term = rf.currentTerm
